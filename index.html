@@ -11,62 +11,131 @@
 <style>
 body{margin:0;font-family:Arial;background:#0f172a;color:#fff}
 header{padding:15px;text-align:center;background:#1e293b;font-size:22px}
-
 .container{max-width:1000px;margin:auto;padding:20px}
 .card{background:#1e293b;padding:20px;border-radius:12px;margin-top:20px}
-
 #map{height:400px;border-radius:10px;margin-top:10px}
-
 input{width:100%;padding:12px;border-radius:8px;border:none;margin-top:10px}
-
 button{padding:10px 15px;border:none;border-radius:8px;margin-top:10px;cursor:pointer}
-
 .green{background:#16a34a}
 .yellow{background:#eab308}
 .red{background:#dc2626}
+.routes div{padding:15px;margin-top:10px;border-radius:10px;border:1px solid #334155}
 
-.routes div{
-padding:15px;margin-top:10px;border-radius:10px;
-cursor:pointer;transition:0.3s;border:1px solid #334155;
+/* splash */
+.splash{
+display:flex;justify-content:center;align-items:center;height:100vh;flex-direction:column;
+animation:fade 2s;
 }
-.routes div:hover{transform:scale(1.03)}
-
-.badge{background:#3b82f6;padding:4px 8px;border-radius:6px;font-size:12px;margin-left:5px}
-.nav-btn{background:#2563eb;color:white;margin-top:8px}
+@keyframes fade{
+from{opacity:0; transform:scale(0.8);}
+to{opacity:1; transform:scale(1);}
+}
 </style>
 </head>
 
 <body>
+<div id="app"></div>
 
-<header>AI Shadow Navigation ⭐</header>
+<script>
+
+let app=document.getElementById("app");
+let map,userLocation,routeLayers=[];
+let selectedDestination=null;
+let contacts=[];
+
+// ================= SPLASH =================
+function showSplash(){
+app.innerHTML=`
+<div class="splash">
+<h1>🛡 AI Shadow Navigation</h1>
+<p>Women Safety First</p>
+</div>`;
+setTimeout(showLogin,2000);
+}
+
+// ================= LOGIN =================
+function showLogin(){
+app.innerHTML=`
+<header>🔐 Login</header>
+<div class="container">
+<div class="card">
+<input id="email" type="email" " placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button class="green" onclick="login()">Login</button>
+</div>
+</div>`;
+}
+
+function login(){
+let email=document.getElementById("email").value;
+let pass=document.getElementById("password").value;
+
+if(email && pass){
+showMainPage();
+}else{
+alert("Enter credentials");
+}
+}
+
+// ================= MAIN PAGE =================
+function showMainPage(){
+app.innerHTML=`
+<header>🛡 AI Shadow Navigation</header>
 
 <div class="container">
 
 <div class="card">
 <h3>📍 Location</h3>
-<button onclick="trackLocation()">Track Location</button>
+<input id="manualLocation" placeholder="Enter location manually">
+<button onclick="trackLocation()">Get Location</button>
 <div id="map"></div>
 </div>
 
 <div class="card">
-<h3>🛡 Find Safe Route</h3>
+<h3>🛡 Directions</h3>
 <input id="destination" placeholder="Enter destination">
-<button onclick="generateRoutes()" class="green">Find Routes</button>
+<button class="green" onclick="generateRoutes()">Find Routes</button>
 <div id="routes" class="routes"></div>
 </div>
 
 <div class="card">
+<h3>👨‍👩‍👧 Trusted Contacts</h3>
+
+<input id="name1" placeholder="Contact 1 Name" oninput="autoSaveContacts()">
+<input id="phone1" placeholder="Contact Number" maxlength="10" oninput="this.value=this.value.replace(/[^0-9]/g,''); autoSaveContacts();">
+
+<input id="name2" placeholder="Contact 2 Name" oninput="autoSaveContacts()">
+<input id="phone2" placeholder="Contact Number" maxlength="10" oninput="this.value=this.value.replace(/[^0-9]/g,''); autoSaveContacts();">
+
+</div>
+
+<div class="card">
 <h3>🚨 Emergency</h3>
-<button onclick="sendSOS()" class="red">SOS</button>
+<button class="red" onclick="sendSOS()">SOS</button>
+
+<div id="contactList"></div>
+
+<p>Women Helpline: 1091</p>
+<p>Police: 100</p>
 </div>
 
-</div>
+</div>`;
+}
 
-<script>
-let map,userLocation,routeLayers=[],selectedLayer;
-let selectedDestination=null;
+// ================= AUTO SAVE =================
+function autoSaveContacts(){
+let n1=name1.value,p1=phone1.value,n2=name2.value,p2=phone2.value;
 
-// 📍 LOCATION
+if((p1 && p1.length!==10)||(p2 && p2.length!==10)) return;
+
+contacts=[{name:n1,phone:p1},{name:n2,phone:p2}];
+
+// show in UI
+document.getElementById("contactList").innerHTML =
+contacts.map(c=>`<p>${c.name} (${c.phone})</p>`).join("");
+}
+
+// ================= LOCATION =================
 function trackLocation(){
 navigator.geolocation.getCurrentPosition(pos=>{
 userLocation=[pos.coords.latitude,pos.coords.longitude];
@@ -74,122 +143,117 @@ userLocation=[pos.coords.latitude,pos.coords.longitude];
 map=L.map('map').setView(userLocation,13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-L.marker(userLocation).addTo(map).bindPopup("You").openPopup();
+L.marker(userLocation).addTo(map).bindPopup("You");
+
+
 });
 }
 
-// 🚀 ROUTES
+// ================= AI =================
+function getSafetyScore(route){
+return (route.distance/1000)*2 + (route.duration/60) + Math.random()*30;
+}
+
+// ================= ROUTES =================
 async function generateRoutes(){
 
-if(!userLocation) return alert("Track location first");
+if(!userLocation) return alert("Set location first");
+
+document.getElementById("routes").innerHTML="Loading routes...";
 
 let dest=document.getElementById("destination").value.trim();
-if(!dest) return alert("Enter destination");
-
-// geocode
 let geo=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${dest}`);
 let geoData=await geo.json();
-
-if(!geoData.length) return alert("Location not found");
 
 let destLat=parseFloat(geoData[0].lat);
 let destLng=parseFloat(geoData[0].lon);
 
-// save destination
 selectedDestination=[destLat,destLng];
-
-// marker
 L.marker(selectedDestination).addTo(map).bindPopup("Destination");
 
-// clear old routes
+// clear
 routeLayers.forEach(l=>map.removeLayer(l));
 routeLayers=[];
 
-// fetch routes
 let res=await fetch(`https://router.project-osrm.org/route/v1/driving/${userLocation[1]},${userLocation[0]};${destLng},${destLat}?overview=full&geometries=geojson&alternatives=true`);
 let data=await res.json();
 
+let total=data.routes.length;
+
+let sorted=data.routes.map((r,i)=>({i,score:getSafetyScore(r)}))
+.sort((a,b)=>a.score-b.score);
+
 let html="";
 
-// ⭐ FIND NEAREST ROUTE
-let nearestIndex=0;
-let minDistance=Infinity;
-
 data.routes.forEach((route,i)=>{
-if(route.distance < minDistance){
-minDistance = route.distance;
-nearestIndex = i;
-}
-});
 
-// ⭐ DRAW ROUTES
-data.routes.forEach((route,i)=>{
+let rank=sorted.findIndex(r=>r.i===i);
 
 let color,line,label;
 
-// MAIN LOGIC
-if(i === nearestIndex){
-color="green";
-line="#16a34a";
-label="Nearest Safe Route";
-}else{
-color="yellow";
-line="#eab308";
-label="Alternative Route";
+if(total===1){
+color="green"; line="#16a34a"; label="Only Route";
+}
+else if(total===2){
+color=rank===0?"green":"red";
+line=rank===0?"#16a34a":"#dc2626";
+label=rank===0?"Safest":"Risky";
+}
+else{
+color=rank===0?"green":rank===1?"yellow":"red";
+line=rank===0?"#16a34a":rank===1?"#eab308":"#dc2626";
+label=rank===0?"Safest":rank===1?"Moderate":"Risky";
 }
 
-// draw route
+// draw
 let layer=L.geoJSON(route.geometry,{
 style:{color:line,weight:6}
-}).addTo(map);
+}).addTo(map).bindPopup(label);
 
 routeLayers.push(layer);
 
-// UI
 html+=`
-<div class="${color}" onclick="selectRoute(${i})">
-<b>${label}</b> ${i===nearestIndex?'<span class="badge">⭐ Best</span>':''}<br>
-Distance: ${(route.distance/1000).toFixed(2)} km<br>
-Time: ${(route.duration/60).toFixed(0)} min<br>
-
-<button class="nav-btn" onclick="event.stopPropagation(); navigateToDestination()">
-🧭 Directions
-</button>
-
+<div class="${color}">
+<b>${label}</b><br>
+${(route.distance/1000).toFixed(2)} km
+<button onclick="startNavigation()">Directions</button>
 </div>`;
 });
 
-// focus nearest
-map.fitBounds(routeLayers[nearestIndex].getBounds());
-
+map.fitBounds(routeLayers[0].getBounds());
 document.getElementById("routes").innerHTML=html;
 }
 
-// 🎯 SELECT ROUTE
-function selectRoute(i){
-if(selectedLayer) selectedLayer.setStyle({weight:6});
+// ================= GOOGLE MAPS NAV =================
+function startNavigation(){
 
-selectedLayer=routeLayers[i];
-selectedLayer.setStyle({weight:10});
-
-map.fitBounds(selectedLayer.getBounds());
+if(!userLocation || !selectedDestination){
+alert("Missing location");
+return;
 }
 
-// 🧭 NAVIGATION (Google Maps)
-function navigateToDestination(){
-if(!userLocation || !selectedDestination) return alert("Missing data");
+let url=`https://www.google.com/maps/dir/?api=1&origin=${userLocation[0]},${userLocation[1]}&destination=${selectedDestination[0]},${selectedDestination[1]}&travelmode=driving`;
 
-let url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation[0]},${userLocation[1]}&destination=${selectedDestination[0]},${selectedDestination[1]}&travelmode=driving`;
-
-window.open(url, "_blank");
+window.open(url,"_blank");
 }
 
-// 🚨 SOS
+// ================= SOS =================
 function sendSOS(){
-if(!userLocation) return;
-alert(`SOS!\nLat:${userLocation[0]}\nLng:${userLocation[1]}`);
-}
-</script>
 
+if(contacts.length===0){
+alert("No contacts");
+return;
+}
+
+let link=`https://maps.google.com/?q=${userLocation[0]},${userLocation[1]}`;
+let txt=contacts.map(c=>`${c.name} (${c.phone})`).join("\n");
+
+alert(`🚨 SOS ALERT\n\n${txt}\n\n${link}`);
+}
+
+// START
+showSplash();
+
+</script>
 </body>
 </html>
